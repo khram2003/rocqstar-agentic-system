@@ -32,8 +32,12 @@ const rootDir = __dirname;
     swagger: [
         {
             path: "/docs",
+<<<<<<< HEAD
             // cssPath: `${rootDir}/../../src/agentServer/spec/style.css`,
             specVersion: "3.0.1",
+=======
+            cssPath: `${rootDir}/../../src/agentServer/spec/style.css`,
+>>>>>>> cc9f100 (Implement more endpoints, fix linter)
         },
     ],
     // imports: [CoqProjectController, CoqProjectObserverService],
