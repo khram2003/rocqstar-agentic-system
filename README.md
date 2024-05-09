@@ -20,6 +20,7 @@
   - 🧰 [Model Configuration](#model-configuration)
 - 📌 [Contributed Commands](#contributed-commands)
 - 📊 [Benchmark](#benchmark)
+- 🌐 [Local Server for AI Agents](#local-server-for-coq-project-observation) 
 - 🧩 [Integrating other solutions](#integrating-other-solutions)
   - 🧠 [Tactician](#tactician)
   - 🔨 [CoqHammer](#coqhammer)
@@ -211,7 +212,7 @@ Another thing to keep in mind: We are still in beta and changes in settings may 
 
 * `coqpilot.perform_completion_under_cursor`: Try to generate proof for the goal under the cursor.
 * `coqpilot.perform_completion_for_all_admits`: Try to prove all holes (admitted goals) in the current file.
-* `coqpilot.perform_completion_in_selection`: Try to prove holes (admitted goals) in selection. 
+* `coqpilot.perform_completion_in_selection`: Try to prove holes (admitted goals) in selection.
 
 ## Benchmark
 
@@ -261,6 +262,26 @@ The process of running the benchmark is not perfectly automated and we are worki
     ```    
 
 If you aim to run the benchmark with the use of `Tactician`, you should install the `imm` project and `Tactician` with `opam`. For `opam` installation instruction, you can refer to the [Tactician website](https://coq-tactician.github.io/manual/installation/) and [imm repository](https://github.com/weakmemory/imm/tree/master?tab=readme-ov-file#installation-via-opam-supported-up-to-the-15-version-of-imm) (this part of the README file is a little outdated, but the installation process for `coq-8.19.0` is still the same).
+
+
+## Local Server for Coq project observation
+*IMPORTANT: In Development.*
+
+As a standalone feature from the main extension, we are developing a local server that could be run on the user's machine locally, connect to the CoqPilot OpenAI agent and work in tandem to generate proofs. This server answers questions about the project and typeschecks the generated proofs on demand from the agent.
+
+To run the server you need to hit: 
+```sh
+npm run server
+```
+This will start the server on the `localhost:8000`. The API documentation is available at `http://localhost:8000/docs/`.
+
+As we want to run the server from any place in the system, and run it from the Coq project root, we need to add the executable to the system path. On Linux/MacOS, you can run: 
+```sh
+chmod +x scripts/setup_server.sh
+./scripts/setup_server.sh
+```
+
+Then you would be able to run the server from any place in the system by typing `coqpilot-server`.
 
 ## Integrating other solutions
 
