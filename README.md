@@ -184,20 +184,18 @@ The most commonly used service is `OpenAI` (`Grazie` and `LmStudio` are configur
 {
     "coqpilot.openAiModelsParameters": [
         {
-            "modelId": "openai-gpt-4o-mini",
-            "modelName": "gpt-4o-mini",
+            "modelId": "openai-gpt-3.5",
+            "modelName": "gpt-3.5-turbo-0301",
             "temperature": 1,
             "apiKey": "***your-api-key***",
-            "choices": 15,
+            "choices": 10,
             "systemPrompt": "Generate proof...",
-            "maxTokensToGenerate": 2048,
+            "maxTokensToGenerate": 2000,
             "tokensLimit": 4096,
-            "maxContextTheoremsNumber": 100,
             "multiroundProfile": {
                 "maxRoundsNumber": 1,
                 "proofFixChoices": 1,
-                "proofFixPrompt": "Unfortunately, the last proof is not correct...",
-                "maxPreviousProofVersionsNumber": 100
+                "proofFixPrompt": "Unfortunately, the last proof is not correct..."
             }
         }
     ],

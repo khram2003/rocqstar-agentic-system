@@ -39,6 +39,9 @@
 		/* To allow access to constants from package.json */
 		"resolveJsonModule": true,
 		// "esModuleInterop": true,
+
+		/* For Ts.ED */
+		"emitDecoratorMetadata": true,
 	},
 	"exclude": [
 		"./_opam/**/*",
