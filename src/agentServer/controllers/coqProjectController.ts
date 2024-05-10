@@ -6,6 +6,7 @@ import { prepareProofToCheck } from "../../core/exposedCompletionGeneratorUtils"
 import { FilePathMiddleware } from "../middlewares/filePathMiddleware";
 import { CoqProjectObserverService } from "../services/coqProjectObserverService";
 
+// eslint-disable-next-line prettier/prettier
 @Controller("/document")
 export class CoqProjectController {
     constructor(
