@@ -1,6 +1,6 @@
 import { Injectable } from "@tsed/di";
 import { BadRequest } from "@tsed/exceptions";
-import { lstatSync, readFileSync, readdirSync } from "fs";
+import { lstatSync, readdirSync } from "fs";
 import * as path from "path";
 import { Err, Ok } from "ts-results";
 import { Position } from "vscode-languageclient";
