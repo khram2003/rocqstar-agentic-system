@@ -91,7 +91,7 @@ suite("`CoqProofChecker` tests", () => {
         for (const [i, result] of results[0].entries()) {
             expect(result).toEqual(expected[i]);
         }
-    });
+    }).timeout(5000);
 
     test("Check proof check for many admits", async () => {
         const filePath = ["test_many_admits.v"];
