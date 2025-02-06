@@ -532,7 +532,7 @@
     "teamcity-benchmark-agent": "npm run test-executables-unsafe -- -g=\"[SourceExecutable] Team City Benchmark Agent\"",
     "prelegacy-benchmark": "npm run prebenchmark",
     "legacy-benchmark": "npm run test-executables-unsafe -- -g=\"[SourceExecutable] Legacy Benchmark\"",
-    "server": "node ./out/agentServer/runVsCodeElectron.js"  
+    "server": "node ./out/agentServer/runVsCodeElectron.js"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
@@ -547,6 +547,7 @@
     "@types/mocha": "^10.0.10",
     "@types/node": "22.10.0",
     "@types/node-ipc": "^9.2.3",
+    "@types/supertest": "^6.0.2",
     "@types/tmp": "^0.2.6",
     "@types/vscode": "^1.95.0",
     "@types/yargs": "^17.0.33",

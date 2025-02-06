@@ -357,33 +357,6 @@ export class CoqLspClientImpl implements CoqLspClient {
         }
     }
 
-    private async getMessageAtPointUnsafe(
-        position: Position,
-        documentUri: Uri,
-        version: number
-    ): Promise<PpString[] | Message<PpString>[] | CoqLspError> {
-        let goalRequestParams: GoalRequest = {
-            textDocument: VersionedTextDocumentIdentifier.create(
-                documentUri.uri,
-                version
-            ),
-            position,
-            // eslint-disable-next-line @typescript-eslint/naming-convention
-            pp_format: "Str",
-        };
-
-        const goals = await this.client.sendRequest(
-            goalReqType,
-            goalRequestParams
-        );
-        const messages = goals?.messages ?? undefined;
-        if (!messages) {
-            return new CoqLspError("No messages at point.");
-        }
-
-        return messages;
-    }
-
     private sleep(ms: number): Promise<ReturnType<typeof setTimeout>> {
         return new Promise((resolve) => setTimeout(resolve, ms));
     }
