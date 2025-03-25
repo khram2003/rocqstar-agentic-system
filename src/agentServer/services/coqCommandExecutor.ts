@@ -1,55 +1,52 @@
 import { Mutex } from "async-mutex";
+import { appendFileSync, writeFileSync } from "fs";
+// import * as path from "path";
 import { Err, Ok, Result } from "ts-results";
 import { Position } from "vscode-languageclient";
 
 import { CoqLspClient } from "../../coqLsp/coqLspClient";
-import { CoqLspTimeoutError, ProofGoal } from "../../coqLsp/coqLspTypes";
+import { ProofGoal } from "../../coqLsp/coqLspTypes";
 
 import { Uri } from "../../utils/uri";
 
-export type CoqCodeExecError = string; // is it diagnistic message?
+export type CoqCodeExecError = string;
 export type CoqCodeExecGoalResult = Result<ProofGoal[], CoqCodeExecError>;
-export type CoqCommandExecResult = Result<string[], CoqCodeExecError>;
+export type CoqCommandExecResult = Result<ProofGoal[], CoqCodeExecError>;
 
-/**
- * Logic is similar to CoqProofChecker, yet, they
- * are not being mixed together yet,
- * as the server project is experimental
- * for now.
- */
 export interface CoqCodeExecutorInterface {
     /**
-     * Works similar to CoqProofChecker.checkProofs but
-     * with slightly different semantics. This function
-     * executes the given Coq code in specified environment
-     * and returns either the goal after the execution or
-     * an error message occured in the provided code.
-     * @param fileUri Uri of the file to check the proof in
-     * @param positionToCheckAt Position to check the proof at
+     * Executes the given Coq code in the specified environment and returns either
+     * the resulting proof goals or an error message.
+     * @param fileUri URI of the file containing the code
+     * @param sourceFileContentPrefix Content that should precede the code being checked
+     * @param positionToCheckAt Position in the document where to check the code
      * @param coqCode Coq code to execute
-     *
-     * To Nikita from Nikita: you should read it at paste the code after this position and get the proof state right after it
-     * It does not matter whether the code is a full proof or just a part of it
+     * @param documentVersion Version number of the document
+     * @param coqLspTimeoutMillis Timeout in milliseconds for the LSP request
+     * @returns Promise resolving to either proof goals or an error message
      */
     getGoalAfterCoqCode(
         fileUri: Uri,
+        sourceFileContentPrefix: string[],
         positionToCheckAt: Position,
         coqCode: string,
+        documentVersion: number,
         coqLspTimeoutMillis: number
     ): Promise<CoqCodeExecGoalResult>;
 
     /**
      * Executes the given Coq command in the specified environment
      * and returns the messages that were produced by the command.
-     * @param fileUri Uri of the file to execute the command in
-     * @param positionToExecuteAt Position to execute the command at
+     * @param sourceDirPath Parent directory of the source file
+     * @param sourceFileContentPrefix Prefix with which to typecheck the code
+     * @param prefixEndPosition The position after the prefix end
      * @param coqCommand Coq command to execute
      */
     // executeCoqCommand(
-    //     fileUri: Uri,
-    //     positionToExecuteAt: Position,
-    //     coqCommand: string,
-    //     coqLspTimeoutMillis: number //some commands take time (e.g. Print All.)
+    //     sourceDirPath: string,
+    //     sourceFileContentPrefix: string[],
+    //     prefixEndPosition: Position,
+    //     coqCommand: string
     // ): Promise<CoqCommandExecResult>;
 }
 
@@ -58,97 +55,131 @@ export class CoqCodeExecutor implements CoqCodeExecutorInterface {
 
     constructor(private coqLspClient: CoqLspClient) {}
 
+    /** Executes Coq code and returns resulting goals or errors with timeout */
     async getGoalAfterCoqCode(
         fileUri: Uri,
+        sourceFileContentPrefix: string[],
         positionToCheckAt: Position,
         coqCode: string,
+        documentVersion: number,
         coqLspTimeoutMillis: number = 150000
     ): Promise<CoqCodeExecGoalResult> {
-        return await this.mutex.runExclusive(async () => {
-            const timeoutPromise = new Promise<CoqCodeExecGoalResult>(
-                (_, reject) => {
-                    setTimeout(() => {
-                        reject(
-                            new CoqLspTimeoutError(
-                                `getGoalAfterCoqCode timed out after ${coqLspTimeoutMillis} milliseconds`
-                            )
-                        );
-                    }, coqLspTimeoutMillis);
-                }
-            );
-
-            return Promise.race([
-                this.getGoalAfterCoqCodeUnsafe(
-                    fileUri,
-                    positionToCheckAt,
-                    coqCode
-                ),
-                timeoutPromise,
-            ]);
-        });
+        return this.executeWithTimeout(
+            this.getGoalAfterCoqCodeUnsafe(
+                fileUri,
+                sourceFileContentPrefix,
+                positionToCheckAt,
+                coqCode,
+                documentVersion,
+                coqLspTimeoutMillis
+            ),
+            coqLspTimeoutMillis
+        );
     }
 
     // async executeCoqCommand(
-    //     fileUri: Uri,
-    //     positionToExecuteAt: Position,
-    //     coqCommand: string,
-    //     coqLspTimeoutMillis: number = 300000
+    //     sourceDirPath: string,
+    //     sourceFileContentPrefix: string[],
+    //     prefixEndPosition: Position,
+    //     coqCode: string,
+    //     coqLspTimeoutMillis: number = 150000
     // ): Promise<CoqCommandExecResult> {
-    //     return this.mutex.runExclusive(async () => {
-    //         const timeoutPromise = new Promise<CoqCommandExecResult>(
-    //             (_, reject) => {
-    //                 setTimeout(() => {
-    //                     reject(
-    //                         new CoqLspTimeoutError(
-    //                             `executeCoqCommand timed out after ${coqLspTimeoutMillis} milliseconds`
-    //                         )
-    //                     );
-    //                 }, coqLspTimeoutMillis);
-    //             }
-    //         );
-    //         return Promise.race(
-    //             [
-    //                 this.executeCoqCommandUnsafe(
-    //                     fileUri,
-    //                     positionToExecuteAt,
-    //                     coqCommand
-    //                 ),
-    //                 timeoutPromise,
-    //             ]
-    //         );
-
-    //     });
-
+    //     return this.executeWithTimeout(
+    //         this.executeCoqCommandUnsafe(
+    //             sourceDirPath,
+    //             sourceFileContentPrefix,
+    //             prefixEndPosition,
+    //             coqCode
+    //         ),
+    //         coqLspTimeoutMillis
+    //     );
     // }
 
+    /** Executes a promise with a timeout */
+    private async executeWithTimeout<T>(
+        promise: Promise<T>,
+        timeoutMillis: number
+    ): Promise<T> {
+        return await this.mutex.runExclusive(async () => {
+            const timeoutPromise = new Promise<T>((_, reject) => {
+                setTimeout(() => {
+                    reject(
+                        new Error(
+                            `executeCoqCode timed out after ${timeoutMillis} milliseconds`
+                        )
+                    );
+                }, timeoutMillis);
+            });
+
+            return Promise.race([promise, timeoutPromise]);
+        });
+    }
+
+    /** Core implementation of Coq code execution and goal retrieval */
     private async getGoalAfterCoqCodeUnsafe(
         fileUri: Uri,
+        sourceFileContentPrefix: string[],
         positionToCheckAt: Position,
-        coqCode: string
+        coqCode: string,
+        documentVersion: number,
+        _coqLspTimeoutMillis: number
     ): Promise<CoqCodeExecGoalResult> {
-        const documentVersion = 1;
-        const goalsResult = await this.coqLspClient.withTextDocument(
-            {
-                uri: fileUri,
-            },
-            async () => {
-                console.log("positionToCheckAt", positionToCheckAt);
+        const sourceFileContent = sourceFileContentPrefix.join("\n");
+        writeFileSync(fileUri.fsPath, sourceFileContent);
+        await this.coqLspClient.openTextDocument(fileUri);
 
-                return await this.coqLspClient.getGoalsAtPoint(
-                    positionToCheckAt,
-                    fileUri,
-                    documentVersion,
-                    coqCode
-                );
-
-                //TODO: eventLoggers
-            }
+        console.log(
+            `CoqCodeExecutor.getGoalAfterCoqCodeUnsafe: Appending suffix. Document version: ${documentVersion}`
         );
 
-        if (goalsResult.err) {
-            return Err(goalsResult.val.message);
+        const appendedSuffix = `\n\n${coqCode}`;
+        appendFileSync(fileUri.fsPath, appendedSuffix);
+
+        const diagnostic = await this.coqLspClient.updateTextDocument(
+            sourceFileContentPrefix,
+            appendedSuffix,
+            fileUri,
+            documentVersion + 1
+        );
+
+        if (diagnostic) {
+            console.log(
+                `CoqCodeExecutor.getGoalAfterCoqCodeUnsafe: Diagnostic: ${diagnostic}`
+            );
+
+            return Err(diagnostic);
+        }
+
+        console.log(
+            `CoqCodeExecutor.getGoalAfterCoqCodeUnsafe: Getting goals. Document version: ${documentVersion + 1}`
+        );
+
+        const goal = await this.coqLspClient.getGoalsAtPoint(
+            positionToCheckAt,
+            fileUri,
+            documentVersion + 1
+        );
+
+        console.log(
+            `CoqCodeExecutor.getGoalAfterCoqCodeUnsafe: Got goals. Document version: ${documentVersion + 1}`
+        );
+
+        writeFileSync(fileUri.fsPath, sourceFileContent);
+
+        console.log(
+            `CoqCodeExecutor.getGoalAfterCoqCodeUnsafe: Updating text document. Document version: ${documentVersion + 2}`
+        );
+        await this.coqLspClient.updateTextDocument(
+            sourceFileContentPrefix,
+            "",
+            fileUri,
+            documentVersion + 2
+        );
+
+        if (goal.ok) {
+            return Ok(goal.val);
         } else {
-            return Ok(goalsResult.val);
+            return Err(goal.val.message);
         }
     }
 
@@ -165,11 +196,16 @@ export class CoqCodeExecutor implements CoqCodeExecutorInterface {
     // }
 
     // private async executeCoqCommandUnsafe(
-    //     fileUri: Uri,
-    //     positionToExecuteAt: Position,
+    //     sourceDirPath: string,
+    //     sourceFileContentPrefix: string[],
+    //     prefixEndPosition: Position,
     //     coqCommand: string
-
     // ): Promise<CoqCommandExecResult> {
+    //     if (coqCommand.includes("\n")) {
+    //         return Err("Coq command must be a single line");
+    //     }
+
+    //     const auxFileUri = this.makeAuxFileName(sourceDirPath);
     //     const diagnostic = await this.getDiagnosticAfterExec(
     //         auxFileUri,
     //         sourceFileContentPrefix,
@@ -194,33 +230,32 @@ export class CoqCodeExecutor implements CoqCodeExecutorInterface {
 
     //     unlinkSync(auxFileUri.fsPath);
 
-    //     if (!(message instanceof Error)) {
-    //         return Ok(this.formatLspMessages(message));
+    //     if (message.ok) {
+    //         return Ok(this.formatLspMessages(message.val));
     //     } else {
-    //         return Err(message.message);
+    //         return Err(message.val.message);
     //     }
     // }
 
-    // private async getDiagnosticsAfterExec(
-    //     fileUri: Uri,
-    //     positionToExecuteAt: Position,
+    // private async getDiagnosticAfterExec(
+    //     auxFileUri: Uri,
+    //     sourceFileContentPrefix: string[],
     //     coqCode: string
-    // ): Promise<CoqCodeExecGoalResult> {
-    //     const executionResult = await this.coqLspClient.withTextDocument(
-    //         {
-    //             uri: fileUri,
-    //         },
-    //         async () => {
-    //             return await this.coqLspClient.getGoalsAtPoint(
-    //                 Position.create(positionToExecuteAt.line, positionToExecuteAt.character-1),
-    //                 fileUri,
-    //                 1,
-    //                 coqCode
-    //             );
-    //         }
+    // ): Promise<DiagnosticMessage> {
+    //     const sourceFileContent = sourceFileContentPrefix.join("\n");
+    //     writeFileSync(auxFileUri.fsPath, sourceFileContent);
+    //     await this.coqLspClient.openTextDocument(auxFileUri);
+
+    //     const appendedSuffix = `\n\n${coqCode}`;
+    //     appendFileSync(auxFileUri.fsPath, appendedSuffix);
+
+    //     const diagnostic = await this.coqLspClient.updateTextDocument(
+    //         sourceFileContentPrefix,
+    //         appendedSuffix,
+    //         auxFileUri,
+    //         2
     //     );
-    //     if (executionResult.err) {
-    //         return
-    //     }
+
+    //     return diagnostic;
     // }
 }

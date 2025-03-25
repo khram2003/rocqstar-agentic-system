@@ -596,6 +596,7 @@
     "toml": "^3.0.0",
     "ts-node": "^10.9.2",
     "ts-results": "^3.3.0",
+    "uuid": "^11.0.5",
     "vscode-languageclient": "^9.0.1",
     "yargs": "^17.7.2"
   }

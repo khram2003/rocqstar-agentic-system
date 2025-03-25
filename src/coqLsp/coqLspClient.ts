@@ -5,6 +5,8 @@ import { OutputChannel } from "vscode";
 import {
     BaseLanguageClient,
     Diagnostic,
+    DidChangeTextDocumentNotification,
+    DidChangeTextDocumentParams,
     DidCloseTextDocumentNotification,
     DidCloseTextDocumentParams,
     DidOpenTextDocumentNotification,
@@ -24,7 +26,6 @@ import { throwOnAbort } from "../core/abortUtils";
 
 import { EventLogger } from "../logging/eventLogger";
 import { getErrorMessage } from "../utils/errorsUtils";
-import { millisToString } from "../utils/time";
 import { Uri } from "../utils/uri";
 
 import { CoqLspClientConfig, CoqLspServerConfig } from "./coqLspConfig";
@@ -36,6 +37,7 @@ import {
     FlecheDocumentParams,
     GoalAnswer,
     GoalRequest,
+    Message,
     PpString,
     ProofGoal,
 } from "./coqLspTypes";
@@ -64,8 +66,8 @@ export interface CoqLspClient extends Disposable {
     ): Promise<Result<ProofGoal[], Error>>;
 
     /**
-     * The wrapper for the `getGoalsAtPoint` method returning only the first goal of the extracted ones.
-     * If the goals extraction is not successfull, this method will throw a `CoqLspError`.
+     * The wrapper for the getGoalsAtPoint method returning only the first goal of the extracted ones.
+     * If the goals extraction is not successfull, this method will throw a CoqLspError.
      */
     getFirstGoalAtPointOrThrow(
         position: Position,
@@ -81,7 +83,20 @@ export interface CoqLspClient extends Disposable {
      */
     getFlecheDocument(uri: Uri): Promise<FlecheDocument>;
 
+    getMessageAtPoint(
+        position: Position,
+        documentUri: Uri,
+        version: number
+    ): Promise<PpString[] | Message<PpString>[] | CoqLspError>;
+
     openTextDocument(uri: Uri, version?: number): Promise<DiagnosticMessage>;
+
+    updateTextDocument(
+        oldDocumentText: string[],
+        appendedSuffix: string,
+        uri: Uri,
+        version: number
+    ): Promise<DiagnosticMessage>;
 
     closeTextDocument(uri: Uri): Promise<void>;
 
@@ -108,7 +123,7 @@ export class CoqLspClientImpl implements CoqLspClient {
     private subscriptions: Disposable[] = [];
     private mutex = new Mutex();
 
-    private constructor(
+    constructor(
         coqLspConnector: CoqLspConnector,
         public readonly eventLogger?: EventLogger,
         public readonly abortSignal?: AbortSignal
@@ -183,6 +198,44 @@ export class CoqLspClientImpl implements CoqLspClient {
         });
     }
 
+    async getMessageAtPoint(
+        position: Position,
+        documentUri: Uri,
+        version: number
+    ): Promise<PpString[] | Message<PpString>[] | CoqLspError> {
+        return await this.mutex.runExclusive(async () => {
+            return this.getMessageAtPointUnsafe(position, documentUri, version);
+        });
+    }
+
+    private async getMessageAtPointUnsafe(
+        position: Position,
+        documentUri: Uri,
+        version: number
+    ): Promise<PpString[] | Message<PpString>[] | CoqLspError> {
+        let goalRequestParams: GoalRequest = {
+            textDocument: VersionedTextDocumentIdentifier.create(
+                documentUri.uri,
+                version
+            ),
+            position,
+            // eslint-disable-next-line @typescript-eslint/naming-convention
+            pp_format: "Str",
+        };
+
+        const goals = await this.client.sendRequest(
+            goalReqType,
+            goalRequestParams
+        );
+        console.log("goals", goals);
+        const messages = goals?.messages ?? undefined;
+        if (!messages) {
+            return new CoqLspError("No messages at point.");
+        }
+
+        return messages;
+    }
+
     async openTextDocument(
         uri: Uri,
         version: number = 1
@@ -190,6 +243,22 @@ export class CoqLspClientImpl implements CoqLspClient {
         return await this.mutex.runExclusive(async () => {
             throwOnAbort(this.abortSignal);
             return this.openTextDocumentUnsafe(uri, version);
+        });
+    }
+
+    async updateTextDocument(
+        oldDocumentText: string[],
+        appendedSuffix: string,
+        uri: Uri,
+        version: number = 1
+    ): Promise<DiagnosticMessage> {
+        return await this.mutex.runExclusive(async () => {
+            return this.updateTextDocumentUnsafe(
+                oldDocumentText,
+                appendedSuffix,
+                uri,
+                version
+            );
         });
     }
 
@@ -300,7 +369,6 @@ export class CoqLspClientImpl implements CoqLspClient {
             .filter((diag) => diag.range.start.line >= position.line)
             .filter((diag) => diag.severity === 1) // 1 is error
             .shift()?.message;
-
         if (!diagnosticMessageWithTrace) {
             return undefined;
         } else {
@@ -365,9 +433,8 @@ export class CoqLspClientImpl implements CoqLspClient {
         requestType: ProtocolNotificationType<any, any>,
         params: any,
         uri: Uri,
-        version: number,
         lastDocumentEndPosition?: Position,
-        timeoutMillis: number = 300000
+        timeout: number = 300000
     ): Promise<DiagnosticMessage> {
         await this.client.sendNotification(requestType, params);
 
@@ -387,10 +454,7 @@ export class CoqLspClientImpl implements CoqLspClient {
             this.client.onNotification(
                 PublishDiagnosticsNotification.type,
                 (params) => {
-                    if (
-                        params.uri.toString() === uri.uri &&
-                        params.version === version
-                    ) {
+                    if (params.uri.toString() === uri.uri) {
                         pendingDiagnostic = false;
                         awaitedDiagnostics = params.diagnostics;
 
@@ -408,24 +472,19 @@ export class CoqLspClientImpl implements CoqLspClient {
             )
         );
 
-        const initialTimeout = timeoutMillis;
-        while (timeoutMillis > 0 && (pendingProgress || pendingDiagnostic)) {
+        while (timeout > 0 && (pendingProgress || pendingDiagnostic)) {
             await this.sleep(100);
-            timeoutMillis -= 100;
+            timeout -= 100;
         }
 
         if (
-            timeoutMillis <= 0 ||
+            timeout <= 0 ||
             pendingProgress ||
             pendingDiagnostic ||
             awaitedDiagnostics === undefined
         ) {
-            throw new CoqLspError(
-                `coq-lsp did not respond in ${millisToString(initialTimeout)}`
-            );
+            throw new CoqLspError("coq-lsp did not respond in time");
         }
-
-        this.subscriptions.forEach((d) => d.dispose());
 
         return this.filterDiagnostics(
             awaitedDiagnostics,
@@ -438,7 +497,6 @@ export class CoqLspClientImpl implements CoqLspClient {
         version: number = 1
     ): Promise<DiagnosticMessage> {
         const docText = readFileSync(uri.fsPath).toString();
-
         const params: DidOpenTextDocumentParams = {
             textDocument: {
                 uri: uri.uri,
@@ -451,8 +509,43 @@ export class CoqLspClientImpl implements CoqLspClient {
         return await this.waitUntilFileFullyChecked(
             DidOpenTextDocumentNotification.type,
             params,
+            uri
+        );
+    }
+
+    private getTextEndPosition(lines: string[]): Position {
+        return Position.create(
+            lines.length - 1,
+            lines[lines.length - 1].length
+        );
+    }
+
+    private async updateTextDocumentUnsafe(
+        oldDocumentText: string[],
+        appendedSuffix: string,
+        uri: Uri,
+        version: number = 1
+    ): Promise<DiagnosticMessage> {
+        const updatedText = oldDocumentText.join("\n") + appendedSuffix;
+        const oldEndPosition = this.getTextEndPosition(oldDocumentText);
+
+        const params: DidChangeTextDocumentParams = {
+            textDocument: {
+                uri: uri.uri,
+                version: version,
+            },
+            contentChanges: [
+                {
+                    text: updatedText,
+                },
+            ],
+        };
+
+        return await this.waitUntilFileFullyChecked(
+            DidChangeTextDocumentNotification.type,
+            params,
             uri,
-            version
+            oldEndPosition
         );
     }
 
@@ -478,12 +571,12 @@ export class CoqLspClientImpl implements CoqLspClient {
     }
 
     /**
-     * _Implementation note:_ although this `dispose` implementation calls an async method,
-     * we are not tend to await it, as well as `CoqLspClient.dispose()` in general.
+     * _Implementation note:_ although this dispose implementation calls an async method,
+     * we are not tend to await it, as well as CoqLspClient.dispose() in general.
      *
      * Since different coq-lsp clients correspond to different processes,
      * they don't have any shared resources; therefore, a new client can be started without
-     * waiting for the previous one to finish. Thus, we don't await for this `dispose()` call
+     * waiting for the previous one to finish. Thus, we don't await for this dispose() call
      * to finish, the client and its process will be disposed at some point asynchronously.
      */
     dispose(): void {
