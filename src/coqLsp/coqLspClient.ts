@@ -17,6 +17,7 @@ import {
     ProtocolNotificationType,
     PublishDiagnosticsNotification,
     PublishDiagnosticsParams,
+    Range,
     RequestType,
     TextDocumentIdentifier,
     VersionedTextDocumentIdentifier,
@@ -116,7 +117,12 @@ const flecheDocReqType = new RequestType<
     void
 >("coq/getDocument");
 
-export type DiagnosticMessage = string | undefined;
+export interface LspDiagnostic {
+    ppMessage: string;
+    range: Range;
+}
+
+export type DiagnosticMessage = LspDiagnostic | undefined;
 
 export class CoqLspClientImpl implements CoqLspClient {
     private client: BaseLanguageClient;
@@ -306,11 +312,12 @@ export class CoqLspClientImpl implements CoqLspClient {
         return match ? match[1] : undefined;
     }
 
-    removeTraceFromLspError(errorMsgWithTrace: string): string | undefined {
+    removeTraceFromLspError(errorMsgWithTrace: string): string {
         const traceStartString = "Raised at";
+        const unknownErrorString = "Unknown LSP error has occurred";
 
         if (!errorMsgWithTrace.includes(traceStartString)) {
-            return errorMsgWithTrace.split("\n").shift();
+            return errorMsgWithTrace.split("\n").shift() ?? unknownErrorString;
         }
 
         return errorMsgWithTrace
@@ -364,15 +371,20 @@ export class CoqLspClientImpl implements CoqLspClient {
     filterDiagnostics(
         diagnostics: Diagnostic[],
         position: Position
-    ): string | undefined {
-        const diagnosticMessageWithTrace = diagnostics
+    ): DiagnosticMessage {
+        const firstDiagnostic = diagnostics
             .filter((diag) => diag.range.start.line >= position.line)
             .filter((diag) => diag.severity === 1) // 1 is error
-            .shift()?.message;
-        if (!diagnosticMessageWithTrace) {
+            .shift();
+        if (!firstDiagnostic) {
             return undefined;
         } else {
-            return this.removeTraceFromLspError(diagnosticMessageWithTrace);
+            return {
+                ppMessage: this.removeTraceFromLspError(
+                    firstDiagnostic.message
+                ),
+                range: firstDiagnostic.range,
+            };
         }
     }
 

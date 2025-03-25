@@ -175,7 +175,6 @@ export class CoqProjectController {
 
     /** Validates a proof in the context of a session and returns goals/errors */
     @Get("/check-proof")
-    // @UseBefore(FilePathMiddleware)
     async checkProofInFile(
         @Required() @QueryParams("proof") proof: string,
         @Required() @QueryParams("sessionId") sessionId: string,

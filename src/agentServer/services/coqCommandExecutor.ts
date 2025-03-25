@@ -147,7 +147,7 @@ export class CoqCodeExecutor implements CoqCodeExecutorInterface {
                 `CoqCodeExecutor.getGoalAfterCoqCodeUnsafe: Diagnostic: ${diagnostic}`
             );
 
-            return Err(diagnostic);
+            return Err(diagnostic.ppMessage);
         }
 
         console.log(
