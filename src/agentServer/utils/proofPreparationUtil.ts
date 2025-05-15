@@ -3,16 +3,17 @@ import { existsSync } from "fs";
 import { Uri } from "../../utils/uri";
 
 export function prepareProofToCheck(proof: string): string {
-    // Remove backticks
     let preparedProof = proof
         .replace(/`/g, "")
         .replace(/Proof using.*?\./gi, "")
         .replace(/Proof\./gi, "")
         .replace(/Qed\./gi, "")
         .replace(/Admitted\./gi, "")
-        .replace(/Abort\./gi, "");
+        .replace(/Abort\./gi, "")
+        .replace(/\(\*[\s\S]*?\*\)/gs, "")
+        .replace(/^\s*[\r\n]/gm, "");
 
-    preparedProof = `Proof. ${preparedProof.trim()} `;
+    preparedProof = `Proof.\n${preparedProof.trim()} `;
 
     return preparedProof;
 }

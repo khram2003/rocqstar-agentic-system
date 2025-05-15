@@ -23,8 +23,10 @@ interface Session {
         {
             proofContent: string[]; // lines of Coq code
             proofSteps: string[];
+            validProofStepsPrefix: string[] | null;
             parentHash: string | null;
             childrenHashes: string[];
+            isIncomplete: boolean;
         }
     >;
 }
@@ -78,7 +80,7 @@ export class SessionManager {
             );
 
             const sourceFileContentPrefixWithTheorem =
-                sourceFileContentPrefix.concat([theoremStatement]);
+                sourceFileContentPrefix.concat(theoremStatement.split("\n"));
             writeFileSync(
                 absoluteAuxFileUri.fsPath,
                 sourceFileContentPrefixWithTheorem.join("\n")
@@ -110,9 +112,11 @@ export class SessionManager {
                 .update(JSON.stringify(initialProofVersion.proofContent))
                 .update(initialProofVersion.parentHash || "")
                 .digest("hex");
-            this.sessions
-                .get(sessionId)
-                ?.proofVersions.set(hash, initialProofVersion);
+            this.sessions.get(sessionId)?.proofVersions.set(hash, {
+                ...initialProofVersion,
+                validProofStepsPrefix: [],
+                isIncomplete: true,
+            });
 
             console.log(
                 `SessionManager.startSession: Created session with ID ${sessionId}`
@@ -147,16 +151,28 @@ export class SessionManager {
         parentHash: string
     ): Promise<string | undefined> {
         return this.mutex.runExclusive(async () => {
-            proofPortion = proofPortion.map((line) =>
-                line.replace("Proof.", "")
-            );
             console.log(
                 `SessionManager.commitProofStep: Committing portion for session ${sessionId}: ${proofPortion}`
+            );
+            console.log(
+                `SessionManager.commitProofStep: Length of proof portion: ${proofPortion.length}`
+            );
+
+            proofPortion = proofPortion
+                .map((line) => line.replace("Proof.", ""))
+                .filter((line) => line.trim().length > 0);
+            console.log(
+                `SessionManager.commitProofStep: Committing portion for session ${sessionId}: ${proofPortion}`
+            );
+            console.log(
+                `SessionManager.commitProofStep: Length of proof portion: ${proofPortion.length}`
             );
 
             const proofPortionSteps = proofPortion
                 .map((line) => line.split("."))
                 .flat()
+                .map((step) => step.trim())
+                .filter((step) => step.length > 0)
                 .map((step) => `${step}.`);
 
             const initialProofVersionHash = this.sessions
@@ -241,7 +257,11 @@ export class SessionManager {
                 return undefined;
             }
             foundPrefixVersion.childrenHashes.push(hash);
-            session.proofVersions.set(hash, updatedProofVersion);
+            session.proofVersions.set(hash, {
+                ...updatedProofVersion,
+                validProofStepsPrefix: [],
+                isIncomplete: true,
+            });
             session.auxFileVersionNumber = newVersion;
 
             return hash;

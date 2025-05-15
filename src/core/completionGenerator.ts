@@ -53,7 +53,7 @@ export async function generateCompletion(
     eventLogger?: EventLogger,
     perProofTimeoutMillis: number = 15000
 ): Promise<GenerationResult> {
-    const context = buildProofGenerationContext(
+    const context = await buildProofGenerationContext(
         completionContext,
         sourceFileEnvironment.fileTheorems,
         processEnvironment.theoremRanker,

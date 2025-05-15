@@ -1,0 +1,268 @@
+openapi: 3.0.0
+info:
+  title: CoqPilot MCP Server API
+  description: API for interacting with CoqPilot's Model Control Protocol Server
+  version: 1.0.0
+servers:
+  - url: http://localhost:3001
+    description: Local development server
+
+paths:
+  /sse:
+    get:
+      summary: Establish SSE connection
+      description: Establishes a Server-Sent Events connection for real-time communication
+      responses:
+        '200':
+          description: SSE connection established
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /messages:
+    post:
+      summary: Send message to MCP server
+      description: Sends a message to the MCP server to execute a tool
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/McpMessage'
+      responses:
+        '200':
+          description: Message processed successfully
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/TestConnectionResponse'
+                  - $ref: '#/components/schemas/ProjectRootResponse'
+                  - $ref: '#/components/schemas/CoqFilesResponse'
+                  - $ref: '#/components/schemas/TheoremNamesResponse'
+                  - $ref: '#/components/schemas/CompleteTheoremResponse'
+                  - $ref: '#/components/schemas/ProofCheckResponse'
+                  - $ref: '#/components/schemas/PremisesResponse'
+                  - $ref: '#/components/schemas/SessionResponse'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+    McpMessage:
+      type: object
+      required:
+        - sessionId
+        - tool
+        - parameters
+      properties:
+        sessionId:
+          type: string
+          description: Unique session identifier
+        tool:
+          type: string
+          enum:
+            - test_connection
+            - get_project_root
+            - list_coq_files
+            - get_theorem_names
+            - get_complete_theorem
+            - check_proof
+            - get_premises
+            - start_session
+            - get_session
+            - finish_session
+        parameters:
+          type: object
+          description: Tool-specific parameters
+
+    TestConnectionResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+
+    ProjectRootResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        projectRoot:
+          type: string
+
+    CoqFilesResponse:
+      type: object
+      properties:
+        coqFiles:
+          type: array
+          items:
+            type: string
+
+    TheoremNamesResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        theoremNames:
+          type: array
+          items:
+            type: string
+        isSessionBased:
+          type: boolean
+
+    CompleteTheoremResponse:
+      type: object
+      properties:
+        theoremStatement:
+          type: string
+        theoremProof:
+          type: string
+        isIncomplete:
+          type: boolean
+        isFromOriginalFile:
+          type: boolean
+
+    ProofCheckResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        hash:
+          type: string
+        proof:
+          type: string
+        goals:
+          type: array
+          items:
+            $ref: '#/components/schemas/ApiGoal'
+        error:
+          $ref: '#/components/schemas/ProofError'
+        validPrefix:
+          type: string
+        attemptedProof:
+          type: string
+
+    ApiGoal:
+      type: object
+      properties:
+        id:
+          type: number
+        name:
+          type: string
+        type:
+          type: string
+        hypotheses:
+          type: array
+          items:
+            type: string
+        conclusion:
+          type: string
+
+    ProofError:
+      type: object
+      properties:
+        line:
+          type: number
+        message:
+          type: string
+        location:
+          type: object
+          properties:
+            start:
+              type: object
+              properties:
+                line:
+                  type: number
+                character:
+                  type: number
+            end:
+              type: object
+              properties:
+                line:
+                  type: number
+                character:
+                  type: number
+
+    PremisesResponse:
+      type: object
+      properties:
+        premises:
+          type: array
+          items:
+            type: string
+
+    SessionResponse:
+      type: object
+      properties:
+        session:
+          type: object
+          properties:
+            sessionId:
+              type: string
+            theoremStatement:
+              type: string
+            filePrefixContent:
+              type: array
+              items:
+                type: string
+            auxFileUri:
+              type: string
+            auxFileVersionNumber:
+              type: number
+            proofVersions:
+              type: object
+              additionalProperties:
+                $ref: '#/components/schemas/ProofVersion'
+
+    ProofVersion:
+      type: object
+      properties:
+        proofContent:
+          type: array
+          items:
+            type: string
+        proofSteps:
+          type: array
+          items:
+            type: string
+        validProofStepsPrefix:
+          type: array
+          items:
+            type: string
+        isIncomplete:
+          type: boolean
+        parentHash:
+          type: string
+        childrenHashes:
+          type: array
+          items:
+            type: string
+
+    Error:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        error:
+          type: object
+          properties:
+            message:
+              type: string 

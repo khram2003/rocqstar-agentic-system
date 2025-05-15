@@ -1,0 +1,43 @@
+openapi: 3.0.0
+info:
+  title: CoqPilot MCP Server API
+  description: API documentation for the CoqPilot MCP Server
+  version: 1.0.0
+servers:
+  - url: http://localhost:3001
+    description: Development server
+paths:
+  /sse:
+    get:
+      summary: Establish SSE connection
+      description: Establishes a Server-Sent Events connection for real-time communication
+      responses:
+        '200':
+          description: SSE connection established
+          content:
+            text/event-stream:
+              schema:
+                type: string
+  /messages:
+    post:
+      summary: Send message to session
+      description: Sends a message to a specific session
+      parameters:
+        - name: sessionId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: The session ID to send the message to
+      responses:
+        '200':
+          description: Message sent successfully
+        '400':
+          description: No transport found for sessionId
+  /api-docs:
+    get:
+      summary: Swagger UI
+      description: Serves the Swagger UI interface
+      responses:
+        '200':
+          description: Swagger UI served successfully 

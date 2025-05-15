@@ -9,19 +9,26 @@ import { Position } from "vscode-languageclient";
 import { CoqLspClientImpl } from "../../coqLsp/coqLspClient";
 import { CoqLspConfig } from "../../coqLsp/coqLspConfig";
 import { CoqLspConnector } from "../../coqLsp/coqLspConnector";
+import { apiGoalToProofGoal } from "../../coqLsp/goalTransformer";
 
-import { JaccardIndexContextTheoremsRanker } from "../../core/contextTheoremRanker/actualRankers/jaccardIndexContextTheoremsRanker";
+import { RocqStarContextTheoremsRanker } from "../../core/contextTheoremRanker/actualRankers/rocqStarContextTheoremsRanker";
+import { goalAsTheoremString } from "../../core/contextTheoremRanker/utils/tokenUtils";
 import { hypToString } from "../../core/exposedCompletionGeneratorUtils";
 
-import { parseCoqFile } from "../../coqParser/parseCoqFile";
+import {
+    BenchmarkingLoggerImpl,
+    SeverityLevel,
+} from "../../benchmark/framework/logging/benchmarkingLogger";
+import { readRequestedFilesCache } from "../../benchmark/framework/parseDataset/cacheHandlers/cacheReader";
+import { CacheHolderData } from "../../benchmark/framework/parseDataset/cacheStructures/cacheHolders";
+import { TheoremData } from "../../benchmark/framework/structures/parsedCoqFile/theoremData";
 import { Theorem } from "../../coqParser/parsedTypes";
 import { Uri } from "../../utils/uri";
-import { CheckProofResult } from "../models/apiGoal";
+import { ApiGoal, CheckProofResult } from "../models/apiGoal";
 import { CoqFile } from "../models/coqFile";
 
 import { CoqCodeExecutor } from "./coqCommandExecutor";
-
-// import { CoqCommandType } from "./coqCommandType";
+import { CoqCommandType } from "./coqCommandType";
 
 @Injectable()
 export class CoqProjectObserverService {
@@ -82,14 +89,7 @@ export class CoqProjectObserverService {
         const fileUri = this.resolveFileUri(filePath, auxFileUri);
         console.log(`getTheoremNamesFromFile: Using URI ${fileUri.fsPath}`);
 
-        let document: Theorem[] = [];
-        await this.coqLspClient.withTextDocument({ uri: fileUri }, async () => {
-            document = await parseCoqFile(
-                fileUri,
-                this.coqLspClient,
-                new AbortController().signal
-            );
-        });
+        const document = await this.getDocument(filePath);
 
         const theoremNames = document.map((t) => t.name);
         console.log(
@@ -105,6 +105,35 @@ export class CoqProjectObserverService {
         return Uri.fromPath(path.join(this.projectRoot, filePath));
     }
 
+    private async getDocument(filePath: string): Promise<Theorem[]> {
+        const cachedFile = readRequestedFilesCache(
+            [
+                `/Users/Nikita.Khramov/Desktop/work/coqpilot/dataset/imm/${filePath}`,
+            ],
+            "/Users/Nikita.Khramov/Desktop/work/coqpilot/dataset/imm/",
+            "/Users/Nikita.Khramov/Desktop/work/coqpilot/benchmarkLogs/.cache/imm/",
+            new BenchmarkingLoggerImpl(
+                SeverityLevel.DEBUG,
+                undefined,
+                "CoqProjectObserverService"
+            )
+        );
+        const cachedTheorems: CacheHolderData.CachedTheoremData[] =
+            cachedFile.getAllCachedTheorems(
+                `/Users/Nikita.Khramov/Desktop/work/coqpilot/dataset/imm/${filePath}`
+            );
+        console.log(`cachedTheorems: ${cachedTheorems.length}`);
+        const cachedTheoremsData: TheoremData[] = cachedTheorems.map(
+            (t) => t.theoremData
+        );
+        const document: Theorem[] = cachedTheoremsData.map(
+            (t) => t.sourceTheorem
+        );
+
+        console.log(`document: ${document.length}`);
+        return document;
+    }
+
     async retrieveTheoremWithProofFromFile(
         filePath: string,
         theoremName: string,
@@ -114,16 +143,9 @@ export class CoqProjectObserverService {
             `retrieveTheoremWithProofFromFile: Getting theorem ${theoremName} from ${filePath}`
         );
 
-        const fileUri = this.resolveFileUri(filePath, auxFileUri);
+        // const fileUri = this.resolveFileUri(filePath, auxFileUri);
 
-        let document: Theorem[] = [];
-        await this.coqLspClient.withTextDocument({ uri: fileUri }, async () => {
-            document = await parseCoqFile(
-                fileUri,
-                this.coqLspClient,
-                new AbortController().signal
-            );
-        });
+        const document = await this.getDocument(filePath);
 
         const theorem = document.find((t) => t.name === theoremName);
         if (!theorem) {
@@ -175,59 +197,65 @@ export class CoqProjectObserverService {
      * Runs a Coq command (e.g. Search, Print, Check) on a file.
      * An optional documentVersion parameter is passed to the underlying executor.
      */
-    // async runCoqCommand(
-    //     filePath: string,
-    //     command: CoqCommandType,
-    //     documentVersion: number = 1,
-    //     sessionAuxFileUri?: Uri
-    // ): Promise<string[]> {
-    //     console.log(
-    //         `runCoqCommand: Running command "${command.get().val}" on ${filePath}`
-    //     );
+    async runCoqCommand(
+        filePrefixContent: string[],
+        command: CoqCommandType,
+        documentVersion: number = 1,
+        sessionAuxFileUri: Uri,
+        positionToCheckAt: Position
+    ): Promise<string[]> {
+        console.log(
+            `runCoqCommand: Running command "${command.get().val}" on ${sessionAuxFileUri?.fsPath}`
+        );
 
-    //     const coqCommandAsString = command.get();
-    //     if (coqCommandAsString.err) {
-    //         const errorMsg = coqCommandAsString.val.message;
-    //         console.error(`runCoqCommand: Invalid command: ${errorMsg}`);
-    //         throw new BadRequest(errorMsg);
-    //     }
+        const coqCommandAsString = command.get();
+        if (coqCommandAsString.err) {
+            const errorMsg = coqCommandAsString.val.message;
+            console.error(`runCoqCommand: Invalid command: ${errorMsg}`);
+            throw new BadRequest(errorMsg);
+        }
 
-    //     try {
-    //         const absolutePath = path.join(this.projectRoot, filePath);
-    //         const fileParentDir = path.dirname(absolutePath);
+        if (!sessionAuxFileUri) {
+            const errorMsg = "Session auxiliary file URI is required";
+            console.error(`runCoqCommand: ${errorMsg}`);
+            throw new BadRequest(errorMsg);
+        }
 
-    //         // Read original file for content prefix
-    //         console.log(`runCoqCommand: Reading original file ${absolutePath}`);
-    //         const fileText = readFileSync(absolutePath).toString();
-    //         const fileLines = fileText.split("\n");
-    //         const textEndPos = this.getTextEndPosition(fileLines);
+        try {
+            console.log(
+                `runCoqCommand: Executing command: ${coqCommandAsString.val}`
+            );
+            console.log(
+                `runCoqCommand: Position to check at: Line ${positionToCheckAt.line}, Character ${positionToCheckAt.character}`
+            );
+            console.log(
+                `runCoqCommand: File prefix content length: ${filePrefixContent.length}`
+            );
+            const result = await this.coqCodeExecutor.executeCoqCommand(
+                sessionAuxFileUri,
+                filePrefixContent,
+                positionToCheckAt,
+                coqCommandAsString.val,
+                documentVersion
+            );
 
-    //         console.log(`runCoqCommand: Executing command: ${coqCommandAsString.val}`);
-    //         const result = await this.coqCodeExecutor.executeCoqCommand(
-    //             fileParentDir,
-    //             fileLines,
-    //             textEndPos,
-    //             coqCommandAsString.val,
-    //             this.projectRoot,
-    //             documentVersion,
-    //             150000, // default timeout
-    //             sessionAuxFileUri
-    //         );
-
-    //         if (result.ok) {
-    //             console.log(`runCoqCommand: Command executed successfully`);
-    //             return result.val;
-    //         } else {
-    //             const errorMsg = result.val;
-    //             console.error(`runCoqCommand: Command execution failed: ${errorMsg}`);
-    //             throw new BadRequest(errorMsg);
-    //         }
-    //     } catch (error) {
-    //         const errorMsg = error instanceof Error ? error.message : String(error);
-    //         console.error(`runCoqCommand: Error: ${errorMsg}`);
-    //         throw new BadRequest(`Failed to run Coq command: ${errorMsg}`);
-    //     }
-    // }
+            if (result.ok) {
+                console.log(`runCoqCommand: Command executed successfully`);
+                return result.val;
+            } else {
+                const errorMsg = result.val.message;
+                console.error(
+                    `runCoqCommand: Command execution failed: ${errorMsg}`
+                );
+                throw new BadRequest(errorMsg);
+            }
+        } catch (error) {
+            const errorMsg =
+                error instanceof Error ? error.message : String(error);
+            console.error(`runCoqCommand: Error: ${errorMsg}`);
+            throw new BadRequest(`Failed to run Coq command: ${errorMsg}`);
+        }
+    }
 
     async checkCoqProof(
         coqCode: string,
@@ -247,7 +275,10 @@ export class CoqProjectObserverService {
             const errorMsg =
                 "Auxiliary file URI is required for proof checking";
             console.error(`checkCoqProof: ${errorMsg}`);
-            return Err(errorMsg);
+            return Err({
+                message: errorMsg,
+                line: undefined,
+            });
         }
 
         try {
@@ -266,7 +297,20 @@ export class CoqProjectObserverService {
             );
 
             if (result.err) {
-                return Err(result.val);
+                return Err({
+                    message: result.val.message,
+                    location: {
+                        start: {
+                            line: result.val.location?.start.line ?? 0,
+                            character:
+                                result.val.location?.start.character ?? 0,
+                        },
+                        end: {
+                            line: result.val.location?.end.line ?? 0,
+                            character: result.val.location?.end.character ?? 0,
+                        },
+                    },
+                });
             }
 
             const goals = result.val;
@@ -292,7 +336,10 @@ export class CoqProjectObserverService {
             console.error(
                 `checkCoqProof: Failed to check proof: ${errorMessage}`
             );
-            return Err(`Failed to check proof: ${errorMessage}`);
+            return Err({
+                message: errorMessage,
+                line: undefined,
+            });
         }
     }
 
@@ -301,65 +348,62 @@ export class CoqProjectObserverService {
      */
     async getPremisesFromFile(
         filePath: string,
-        theoremName: string,
-        auxFileUri?: Uri
+        targetFilePath: string,
+        goal: ApiGoal,
+        targetTheoremName: string,
+        _auxFileUri?: Uri
     ): Promise<string[]> {
         console.log(
-            `getPremisesFromFile: Getting premises for theorem ${theoremName} from ${filePath}`
+            `getPremisesFromFile: Getting premises for goal ${JSON.stringify(goal)}`
+        );
+        console.log(
+            `getPremisesFromFile: Getting premises for goal ${goal} in ${filePath}`
         );
 
-        const fileUri = this.resolveFileUri(filePath, auxFileUri);
+        const document: Theorem[] = await this.getDocument(filePath);
 
-        let document: Theorem[] = [];
-        await this.coqLspClient.withTextDocument({ uri: fileUri }, async () => {
-            document = await parseCoqFile(
-                fileUri,
-                this.coqLspClient,
-                new AbortController().signal
+        console.log(`document: ${document.length}`);
+
+        let contextTheorems: Theorem[] = [];
+
+        if (targetFilePath === filePath) {
+            contextTheorems = document.filter(
+                (t) => t.name !== targetTheoremName
             );
-        });
-
-        const theoremIndex = document.findIndex((t) => t.name === theoremName);
-        if (theoremIndex === -1) {
-            const errorMsg = `Theorem ${theoremName} not found in file`;
-            console.error(`getPremisesFromFile: ${errorMsg}`);
-            throw new BadRequest(errorMsg);
+        } else {
+            contextTheorems = document;
         }
 
-        const contextTheorems = document.slice(0, theoremIndex);
-        console.log(
-            `getPremisesFromFile: Found ${contextTheorems.length} context theorems before ${theoremName}`
-        );
+        console.log(`contextTheorems: ${contextTheorems.length}`);
 
-        const theorem = document[theoremIndex];
-        const theoremGoal = theorem?.initial_goal;
-
-        if (!theoremGoal) {
-            const errorMsg = `Theorem ${theoremName}: failed to parse initial goal`;
-            console.error(`getPremisesFromFile: ${errorMsg}`);
-            throw new BadRequest(errorMsg);
-        }
+        // API goal to proof goal
+        const proofGoal = apiGoalToProofGoal(goal);
 
         console.log(
-            `getPremisesFromFile: Ranking context theorems for ${theoremName}`
+            `Transforming goal to proof goal: ${JSON.stringify(proofGoal)}`
         );
-        const ranker = new JaccardIndexContextTheoremsRanker();
+
+        console.log(
+            `Resulting theorem from goal: ${goalAsTheoremString(proofGoal)}`
+        );
+
+        const ranker = new RocqStarContextTheoremsRanker();
         const dummyCompletionContext = {
-            proofGoal: theoremGoal,
+            proofGoal: proofGoal,
             admitRange: {
                 start: { line: 0, character: 0 },
                 end: { line: 0, character: 0 },
             },
         };
 
-        const premises = ranker.rankContextTheorems(
+        const premises = await ranker.rankContextTheorems(
             contextTheorems,
             dummyCompletionContext
         );
 
         const premiseNames = premises.map((t) => t.name);
         console.log(
-            `getPremisesFromFile: Found ${premiseNames.length} premises for ${theoremName}`
+            `getPremisesFromFile: Found ${premiseNames.length} premises`
         );
         return premiseNames;
     }

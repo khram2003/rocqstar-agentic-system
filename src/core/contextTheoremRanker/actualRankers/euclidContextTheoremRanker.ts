@@ -13,10 +13,10 @@ export class EuclidContextTheoremsRanker implements ContextTheoremsRanker {
     readonly type = "euclid";
     readonly needsUnwrappedNotations = true;
 
-    rankContextTheorems(
+    async rankContextTheorems(
         theorems: Theorem[],
         completionContext: CompletionContext
-    ): Theorem[] {
+    ): Promise<Theorem[]> {
         const goal = completionContext.proofGoal;
         const goalTheorem = goalAsTheoremString(goal);
 

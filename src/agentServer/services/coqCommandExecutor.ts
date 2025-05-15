@@ -1,17 +1,28 @@
 import { Mutex } from "async-mutex";
 import { appendFileSync, writeFileSync } from "fs";
-// import * as path from "path";
 import { Err, Ok, Result } from "ts-results";
 import { Position } from "vscode-languageclient";
 
 import { CoqLspClient } from "../../coqLsp/coqLspClient";
-import { ProofGoal } from "../../coqLsp/coqLspTypes";
+import {
+    CoqLspError,
+    Message,
+    PpString,
+    ProofGoal,
+} from "../../coqLsp/coqLspTypes";
 
 import { Uri } from "../../utils/uri";
 
-export type CoqCodeExecError = string;
+interface CoqCodeExecError {
+    message: string;
+    location?: {
+        start: { line: number; character: number };
+        end: { line: number; character: number };
+    } | null;
+}
+
 export type CoqCodeExecGoalResult = Result<ProofGoal[], CoqCodeExecError>;
-export type CoqCommandExecResult = Result<ProofGoal[], CoqCodeExecError>;
+export type CoqCommandExecResult = Result<string[], CoqCodeExecError>;
 
 export interface CoqCodeExecutorInterface {
     /**
@@ -42,12 +53,14 @@ export interface CoqCodeExecutorInterface {
      * @param prefixEndPosition The position after the prefix end
      * @param coqCommand Coq command to execute
      */
-    // executeCoqCommand(
-    //     sourceDirPath: string,
-    //     sourceFileContentPrefix: string[],
-    //     prefixEndPosition: Position,
-    //     coqCommand: string
-    // ): Promise<CoqCommandExecResult>;
+    executeCoqCommand(
+        fileUri: Uri,
+        sourceFileContentPrefix: string[],
+        positionToCheckAt: Position,
+        coqCode: string,
+        documentVersion: number,
+        coqLspTimeoutMillis: number
+    ): Promise<CoqCommandExecResult>;
 }
 
 export class CoqCodeExecutor implements CoqCodeExecutorInterface {
@@ -77,23 +90,26 @@ export class CoqCodeExecutor implements CoqCodeExecutorInterface {
         );
     }
 
-    // async executeCoqCommand(
-    //     sourceDirPath: string,
-    //     sourceFileContentPrefix: string[],
-    //     prefixEndPosition: Position,
-    //     coqCode: string,
-    //     coqLspTimeoutMillis: number = 150000
-    // ): Promise<CoqCommandExecResult> {
-    //     return this.executeWithTimeout(
-    //         this.executeCoqCommandUnsafe(
-    //             sourceDirPath,
-    //             sourceFileContentPrefix,
-    //             prefixEndPosition,
-    //             coqCode
-    //         ),
-    //         coqLspTimeoutMillis
-    //     );
-    // }
+    async executeCoqCommand(
+        fileUri: Uri,
+        sourceFileContentPrefix: string[],
+        positionToCheckAt: Position,
+        coqCode: string,
+        documentVersion: number,
+        coqLspTimeoutMillis: number = 1500000
+    ): Promise<CoqCommandExecResult> {
+        return this.executeWithTimeout(
+            this.executeCoqCommandUnsafe(
+                fileUri,
+                sourceFileContentPrefix,
+                positionToCheckAt,
+                coqCode,
+                documentVersion,
+                coqLspTimeoutMillis
+            ),
+            coqLspTimeoutMillis
+        );
+    }
 
     /** Executes a promise with a timeout */
     private async executeWithTimeout<T>(
@@ -124,8 +140,11 @@ export class CoqCodeExecutor implements CoqCodeExecutorInterface {
         documentVersion: number,
         _coqLspTimeoutMillis: number
     ): Promise<CoqCodeExecGoalResult> {
+        console.log(
+            `CoqCodeExecutor.getGoalAfterCoqCodeUnsafe: Writing source file content. Coq code: ${coqCode}`
+        );
         const sourceFileContent = sourceFileContentPrefix.join("\n");
-        writeFileSync(fileUri.fsPath, sourceFileContent);
+        // writeFileSync(fileUri.fsPath, sourceFileContent);
         await this.coqLspClient.openTextDocument(fileUri);
 
         console.log(
@@ -134,6 +153,10 @@ export class CoqCodeExecutor implements CoqCodeExecutorInterface {
 
         const appendedSuffix = `\n\n${coqCode}`;
         appendFileSync(fileUri.fsPath, appendedSuffix);
+
+        console.log(
+            `CoqCodeExecutor.getGoalAfterCoqCodeUnsafe: Updating text document. Appended suffix: ${appendedSuffix}`
+        );
 
         const diagnostic = await this.coqLspClient.updateTextDocument(
             sourceFileContentPrefix,
@@ -147,7 +170,32 @@ export class CoqCodeExecutor implements CoqCodeExecutorInterface {
                 `CoqCodeExecutor.getGoalAfterCoqCodeUnsafe: Diagnostic: ${diagnostic}`
             );
 
-            return Err(diagnostic.ppMessage);
+            writeFileSync(fileUri.fsPath, sourceFileContent);
+
+            console.log(
+                `CoqCodeExecutor.executeCoqCommandUnsafe: Updating text document. Document version: ${documentVersion + 2}`
+            );
+
+            await this.coqLspClient.updateTextDocument(
+                sourceFileContentPrefix,
+                "",
+                fileUri,
+                documentVersion + 2
+            );
+
+            return Err({
+                message: diagnostic.ppMessage,
+                location: {
+                    start: {
+                        line: diagnostic.range.start.line,
+                        character: diagnostic.range.start.character,
+                    },
+                    end: {
+                        line: diagnostic.range.end.line,
+                        character: diagnostic.range.end.character,
+                    },
+                },
+            });
         }
 
         console.log(
@@ -179,83 +227,129 @@ export class CoqCodeExecutor implements CoqCodeExecutorInterface {
         if (goal.ok) {
             return Ok(goal.val);
         } else {
-            return Err(goal.val.message);
+            return Err({
+                message: goal.val.message,
+                line: undefined,
+            });
         }
     }
 
-    // private formatLspMessages(
-    //     messages: PpString[] | Message<PpString>[]
-    // ): string[] {
-    //     return messages.map((message) => {
-    //         if (typeof message === "string") {
-    //             return message;
-    //         }
+    private formatLspMessages(
+        messages: PpString[] | Message<PpString>[]
+    ): string[] {
+        return messages.map((message) => {
+            if (typeof message === "string") {
+                return message;
+            }
 
-    //         return (message as Message<PpString>).text.toString();
-    //     });
-    // }
+            return (message as Message<PpString>).text.toString();
+        });
+    }
 
-    // private async executeCoqCommandUnsafe(
-    //     sourceDirPath: string,
-    //     sourceFileContentPrefix: string[],
-    //     prefixEndPosition: Position,
-    //     coqCommand: string
-    // ): Promise<CoqCommandExecResult> {
-    //     if (coqCommand.includes("\n")) {
-    //         return Err("Coq command must be a single line");
-    //     }
+    private async executeCoqCommandUnsafe(
+        fileUri: Uri,
+        sourceFileContentPrefix: string[],
+        positionToCheckAt: Position,
+        coqCode: string,
+        documentVersion: number,
+        _coqLspTimeoutMillis: number = 150000
+    ): Promise<CoqCommandExecResult> {
+        await this.coqLspClient.openTextDocument(fileUri);
 
-    //     const auxFileUri = this.makeAuxFileName(sourceDirPath);
-    //     const diagnostic = await this.getDiagnosticAfterExec(
-    //         auxFileUri,
-    //         sourceFileContentPrefix,
-    //         coqCommand
-    //     );
+        const appendedSuffix = `\n\n${coqCode}`;
+        console.log(
+            `CoqCodeExecutor.executeCoqCommandUnsafe: Appending suffix: ${appendedSuffix}`
+        );
+        appendFileSync(fileUri.fsPath, appendedSuffix);
 
-    //     if (diagnostic) {
-    //         unlinkSync(auxFileUri.fsPath);
-    //         return Err(diagnostic);
-    //     }
+        // update the text document with the coq code
+        console.log(
+            `CoqCodeExecutor.executeCoqCommandUnsafe: Updating text document. Document version: ${documentVersion + 1}`
+        );
+        const diagnostic = await this.coqLspClient.updateTextDocument(
+            sourceFileContentPrefix,
+            appendedSuffix,
+            fileUri,
+            documentVersion + 1
+        );
 
-    //     const commandMessagePos = {
-    //         line: prefixEndPosition.line + 2,
-    //         character: coqCommand.length - 1,
-    //     };
+        console.log(
+            `CoqCodeExecutor.executeCoqCommandUnsafe: Diagnostic: ${diagnostic}`
+        );
 
-    //     const message = await this.coqLspClient.getMessageAtPoint(
-    //         commandMessagePos,
-    //         auxFileUri,
-    //         2
-    //     );
+        if (diagnostic) {
+            // TODO: Create a new function for this hack
+            const sourceFileContent = sourceFileContentPrefix.join("\n");
 
-    //     unlinkSync(auxFileUri.fsPath);
+            writeFileSync(fileUri.fsPath, sourceFileContent);
 
-    //     if (message.ok) {
-    //         return Ok(this.formatLspMessages(message.val));
-    //     } else {
-    //         return Err(message.val.message);
-    //     }
-    // }
+            console.log(
+                `CoqCodeExecutor.executeCoqCommandUnsafe: Updating text document. Document version: ${documentVersion + 2}`
+            );
 
-    // private async getDiagnosticAfterExec(
-    //     auxFileUri: Uri,
-    //     sourceFileContentPrefix: string[],
-    //     coqCode: string
-    // ): Promise<DiagnosticMessage> {
-    //     const sourceFileContent = sourceFileContentPrefix.join("\n");
-    //     writeFileSync(auxFileUri.fsPath, sourceFileContent);
-    //     await this.coqLspClient.openTextDocument(auxFileUri);
+            await this.coqLspClient.updateTextDocument(
+                sourceFileContentPrefix,
+                "",
+                fileUri,
+                documentVersion + 2
+            );
+            return Err({
+                message: diagnostic.ppMessage,
+                location: {
+                    start: {
+                        line: diagnostic.range.start.line,
+                        character: diagnostic.range.start.character,
+                    },
+                    end: {
+                        line: diagnostic.range.end.line,
+                        character: diagnostic.range.end.character,
+                    },
+                },
+            });
+        }
 
-    //     const appendedSuffix = `\n\n${coqCode}`;
-    //     appendFileSync(auxFileUri.fsPath, appendedSuffix);
+        console.log(
+            `CoqCodeExecutor.executeCoqCommandUnsafe: Getting message at point. Document version: ${documentVersion + 1}`
+        );
+        const message = await this.coqLspClient.getMessageAtPoint(
+            positionToCheckAt,
+            fileUri,
+            documentVersion + 1
+        );
 
-    //     const diagnostic = await this.coqLspClient.updateTextDocument(
-    //         sourceFileContentPrefix,
-    //         appendedSuffix,
-    //         auxFileUri,
-    //         2
-    //     );
+        console.log(
+            `CoqCodeExecutor.executeCoqCommandUnsafe: Got message at point. Document version: ${documentVersion + 1}`
+        );
 
-    //     return diagnostic;
-    // }
+        console.log(
+            `CoqCodeExecutor.executeCoqCommandUnsafe: Message: ${message}`
+        );
+
+        const sourceFileContent = sourceFileContentPrefix.join("\n");
+
+        writeFileSync(fileUri.fsPath, sourceFileContent);
+
+        console.log(
+            `CoqCodeExecutor.executeCoqCommandUnsafe: Updating text document. Document version: ${documentVersion + 2}`
+        );
+
+        await this.coqLspClient.updateTextDocument(
+            sourceFileContentPrefix,
+            "",
+            fileUri,
+            documentVersion + 2
+        );
+
+        console.log(
+            `CoqCodeExecutor.executeCoqCommandUnsafe: Updated text document. Document version: ${documentVersion + 2}`
+        );
+
+        if (message instanceof CoqLspError) {
+            return Err({
+                message: message.toString(),
+            });
+        }
+
+        return Ok(this.formatLspMessages(message));
+    }
 }

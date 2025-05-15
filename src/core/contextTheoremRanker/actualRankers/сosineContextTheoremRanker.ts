@@ -14,10 +14,10 @@ export class CosineContextTheoremsRanker implements ContextTheoremsRanker {
     readonly type = "cosine";
     readonly needsUnwrappedNotations = true;
 
-    rankContextTheorems(
+    async rankContextTheorems(
         theorems: Theorem[],
         completionContext: CompletionContext
-    ): Theorem[] {
+    ): Promise<Theorem[]> {
         const goal = completionContext.proofGoal;
         const goalTheorem = goalAsTheoremString(goal);
 

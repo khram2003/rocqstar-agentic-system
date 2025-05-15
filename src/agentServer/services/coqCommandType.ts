@@ -72,8 +72,24 @@ export class SearchCoqCommand extends CoqCommandType {
         ValidationRules.haveNoQuotes(this.pattern),
     ];
 
-    protected toString(): string {
-        return `Search (${this.pattern}).`;
+    public toString(): string {
+        return `Proof.\nSearch (${this.pattern}).`;
+    }
+}
+
+export class AboutCoqCommand extends CoqCommandType {
+    constructor(private term: string) {
+        super();
+    }
+
+    argRules: [boolean, string][] = [
+        ValidationRules.beNonEmptyString(this.term),
+        ValidationRules.haveNoNewLines(this.term),
+        ValidationRules.containNoDots(this.term),
+    ];
+
+    public toString(): string {
+        return `Proof.\nAbout ${this.term}.`;
     }
 }
 
@@ -82,8 +98,8 @@ export class PrintAllCoqCommand extends CoqCommandType {
         super();
     }
 
-    protected toString(): string {
-        return "Print All.";
+    public toString(): string {
+        return "Proof.\nPrint All.";
     }
 }
 
@@ -98,8 +114,8 @@ export class PrintCoqCommand extends CoqCommandType {
         ValidationRules.containNoDots(this.term),
     ];
 
-    protected toString(): string {
-        return `Print ${this.term}.`;
+    public toString(): string {
+        return `Proof.\nPrint ${this.term}.`;
     }
 }
 
@@ -114,7 +130,7 @@ export class CheckCoqCommand extends CoqCommandType {
         ValidationRules.containNoDots(this.term),
     ];
 
-    protected toString(): string {
-        return `Check ${this.term}.`;
+    public toString(): string {
+        return `Proof.\nCheck ${this.term}.`;
     }
 }

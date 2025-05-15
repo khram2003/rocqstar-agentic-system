@@ -5,7 +5,7 @@ export interface ContextTheoremsRanker {
     rankContextTheorems(
         theorems: Theorem[],
         completionContext: CompletionContext
-    ): Theorem[];
+    ): Promise<Theorem[]>;
 
     readonly type: RankerType;
 
@@ -22,4 +22,5 @@ export type RankerType =
     | "jaccardIndex"
     | "random"
     | "weightedJaccardIndex"
+    | "rocqStar"
     | "cosine";

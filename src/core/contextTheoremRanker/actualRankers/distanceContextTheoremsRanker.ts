@@ -6,10 +6,10 @@ export class DistanceContextTheoremsRanker implements ContextTheoremsRanker {
     readonly type = "distance";
     readonly needsUnwrappedNotations = false;
 
-    rankContextTheorems(
+    async rankContextTheorems(
         theorems: Theorem[],
         completionContext: CompletionContext
-    ): Theorem[] {
+    ): Promise<Theorem[]> {
         const theoremsBeforeCompletionPosition = theorems.filter(
             (theorem) =>
                 theorem.statement_range.start.line <

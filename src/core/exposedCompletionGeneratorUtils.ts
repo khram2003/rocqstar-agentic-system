@@ -35,16 +35,18 @@ export function goalToTargetLemma(proofGoal: ProofGoal): string {
     return `Lemma helper_theorem ${theoremIndeces} :\n   ${auxTheoremConcl}.`;
 }
 
-export function buildProofGenerationContext(
+export async function buildProofGenerationContext(
     completionContext: CompletionContext,
     fileTheorems: Theorem[],
     theoremRanker?: ContextTheoremsRanker,
     premisesNumber?: number
-): ProofGenerationContext {
+): Promise<ProofGenerationContext> {
+    const rankContextTheoremsResult = await theoremRanker?.rankContextTheorems(
+        fileTheorems,
+        completionContext
+    );
     const rankedTheorems =
-        theoremRanker
-            ?.rankContextTheorems(fileTheorems, completionContext)
-            .slice(0, premisesNumber) ?? fileTheorems;
+        rankContextTheoremsResult?.slice(0, premisesNumber) ?? fileTheorems;
     return {
         contextTheorems: rankedTheorems,
         completionTarget: goalToTargetLemma(completionContext.proofGoal),

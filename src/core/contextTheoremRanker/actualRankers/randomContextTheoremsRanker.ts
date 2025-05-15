@@ -13,10 +13,10 @@ export class RandomContextTheoremsRanker implements ContextTheoremsRanker {
         }
     }
 
-    rankContextTheorems(
+    async rankContextTheorems(
         theorems: Theorem[],
         _completionContext: CompletionContext
-    ): Theorem[] {
+    ): Promise<Theorem[]> {
         const shuffledTheorems = theorems.slice();
         this.shuffleArray(shuffledTheorems);
         return shuffledTheorems;
