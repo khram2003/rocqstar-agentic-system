@@ -10,7 +10,7 @@ export function getRootDir(): string {
 }
 
 export function getDatasetDir(): string {
-    return path.join(getRootDir(), "dataset");
+    return "/Users/Nikita.Khramov/Desktop/work/coqpilot/dataset/imm";
 }
 
 export const defaultEncoding = "utf-8";

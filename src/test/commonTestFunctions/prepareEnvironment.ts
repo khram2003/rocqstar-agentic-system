@@ -74,11 +74,11 @@ export async function withPreparedEnvironmentAndItsFirstContext<T>(
     return withPreparedEnvironment(
         resourcePath,
         projectRootPath,
-        (environment) =>
+        async (environment) =>
             block(
                 environment,
                 environment.completionContexts[0],
-                buildProofGenerationContext(
+                await buildProofGenerationContext(
                     environment.completionContexts[0],
                     environment.sourceFileEnvironment.fileTheorems
                 )

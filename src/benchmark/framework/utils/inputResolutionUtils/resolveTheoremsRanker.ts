@@ -2,6 +2,7 @@ import { DistanceContextTheoremsRanker } from "../../../../core/contextTheoremRa
 import { EuclidContextTheoremsRanker } from "../../../../core/contextTheoremRanker/actualRankers/euclidContextTheoremRanker";
 import { JaccardIndexContextTheoremsRanker } from "../../../../core/contextTheoremRanker/actualRankers/jaccardIndexContextTheoremsRanker";
 import { RandomContextTheoremsRanker } from "../../../../core/contextTheoremRanker/actualRankers/randomContextTheoremsRanker";
+import { RocqStarContextTheoremsRanker } from "../../../../core/contextTheoremRanker/actualRankers/rocqStarContextTheoremsRanker";
 import { WeightedJaccardIndexContextTheoremsRanker } from "../../../../core/contextTheoremRanker/actualRankers/weightedJaccardIndexTheoremRanker";
 import { CosineContextTheoremsRanker } from "../../../../core/contextTheoremRanker/actualRankers/сosineContextTheoremRanker";
 import {
@@ -25,5 +26,7 @@ export function resolveTheoremsRanker(
             return new WeightedJaccardIndexContextTheoremsRanker();
         case "cosine":
             return new CosineContextTheoremsRanker();
+        case "rocqStar":
+            return new RocqStarContextTheoremsRanker();
     }
 }

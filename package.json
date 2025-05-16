@@ -532,7 +532,8 @@
     "teamcity-benchmark-agent": "npm run test-executables-unsafe -- -g=\"[SourceExecutable] Team City Benchmark Agent\"",
     "prelegacy-benchmark": "npm run prebenchmark",
     "legacy-benchmark": "npm run test-executables-unsafe -- -g=\"[SourceExecutable] Legacy Benchmark\"",
-    "server": "node ./out/agentServer/runVsCodeElectron.js"
+    "server": "node ./out/agentServer/runVsCodeElectron.js",
+    "mcp-server": "ts-node src/agentServer/mcpServer.ts"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
@@ -548,8 +549,10 @@
     "@types/node": "22.10.0",
     "@types/node-ipc": "^9.2.3",
     "@types/supertest": "^6.0.2",
+    "@types/swagger-ui-express": "^4.1.8",
     "@types/tmp": "^0.2.6",
     "@types/vscode": "^1.95.0",
+    "@types/yamljs": "^0.2.34",
     "@types/yargs": "^17.0.33",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
@@ -565,13 +568,16 @@
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.18.3",
+    "@modelcontextprotocol/sdk": "^1.10.1",
     "@tsed/common": "^7.69.1",
     "@tsed/core": "^7.69.1",
     "@tsed/di": "^7.69.1",
     "@tsed/exceptions": "^7.69.1",
     "@tsed/platform-express": "^7.69.1",
     "@tsed/swagger": "^7.69.1",
+    "@types/express": "^5.0.1",
     "@types/swagger-schema-official": "^2.0.25",
+    "@types/swagger-ui": "^3.52.4",
     "ajv": "^8.17.1",
     "async-mutex": "^0.5.0",
     "axios": "^1.7.8",
@@ -580,6 +586,7 @@
     "cors": "^2.8.5",
     "dedent": "^1.5.3",
     "event-source-polyfill": "^1.0.31",
+    "express": "^5.1.0",
     "i": "^0.3.7",
     "method-override": "^3.0.0",
     "mocha-param": "^2.0.1",
@@ -591,6 +598,8 @@
     "pino": "^9.5.0",
     "pino-pretty": "^13.0.0",
     "supertest": "^7.0.0",
+    "swagger-ui": "^5.21.0",
+    "swagger-ui-express": "^5.0.1",
     "tiktoken": "^1.0.17",
     "tmp": "^0.2.3",
     "toml": "^3.0.0",
@@ -598,6 +607,7 @@
     "ts-results": "^3.3.0",
     "uuid": "^11.0.5",
     "vscode-languageclient": "^9.0.1",
+    "yamljs": "^0.3.0",
     "yargs": "^17.7.2"
   }
 }

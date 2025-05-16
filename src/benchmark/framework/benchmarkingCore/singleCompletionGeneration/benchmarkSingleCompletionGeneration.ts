@@ -308,12 +308,13 @@ async function generateProofWithRetriesExclusively<
             | undefined = undefined;
         if (generationArgs.roundNumber === 1) {
             generateProof = async (metadataHolder) => {
-                const proofGenerationContext = buildProofGenerationContext(
-                    generationArgs.completionContext,
-                    generationArgs.sourceFileEnvironment.fileTheorems,
-                    generationArgs.sourceTheorem.name,
-                    benchmarkingParams.theoremRanker
-                );
+                const proofGenerationContext =
+                    await buildProofGenerationContext(
+                        generationArgs.completionContext,
+                        generationArgs.sourceFileEnvironment.fileTheorems,
+                        generationArgs.sourceTheorem.name,
+                        benchmarkingParams.theoremRanker
+                    );
                 return generationArgs.llmService.generateProof(
                     proofGenerationContext,
                     benchmarkingParams.modelParams,
@@ -479,20 +480,21 @@ async function generateProofWithRetriesMeasured(
  * _Important:_ this function is the one responsbile for **removing
  * the target theorem from the context** (i.e. file theorems) if it is present there.
  */
-function buildProofGenerationContext(
+async function buildProofGenerationContext(
     completionContext: CompletionContext,
     fileTheorems: Theorem[],
     targetTheoremName: string,
     theoremRanker?: ContextTheoremsRanker
-): ProofGenerationContext {
+): Promise<ProofGenerationContext> {
     const contextTheorems = fileTheorems.filter(
         (theorem) => theorem.name !== targetTheoremName
     );
+
     const rankedTheorems =
-        theoremRanker?.rankContextTheorems(
+        (await theoremRanker?.rankContextTheorems(
             contextTheorems,
             completionContext
-        ) ?? fileTheorems;
+        )) ?? fileTheorems;
     return {
         contextTheorems: rankedTheorems,
         completionTarget: goalToTargetLemma(completionContext.proofGoal),
