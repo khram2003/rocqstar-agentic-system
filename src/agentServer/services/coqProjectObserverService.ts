@@ -15,13 +15,6 @@ import { RocqStarContextTheoremsRanker } from "../../core/contextTheoremRanker/a
 import { goalAsTheoremString } from "../../core/contextTheoremRanker/utils/tokenUtils";
 import { hypToString } from "../../core/exposedCompletionGeneratorUtils";
 
-import {
-    BenchmarkingLoggerImpl,
-    SeverityLevel,
-} from "../../benchmark/framework/logging/benchmarkingLogger";
-import { readRequestedFilesCache } from "../../benchmark/framework/parseDataset/cacheHandlers/cacheReader";
-import { CacheHolderData } from "../../benchmark/framework/parseDataset/cacheStructures/cacheHolders";
-import { TheoremData } from "../../benchmark/framework/structures/parsedCoqFile/theoremData";
 import { Theorem } from "../../coqParser/parsedTypes";
 import { Uri } from "../../utils/uri";
 import { ApiGoal, CheckProofResult } from "../models/apiGoal";
@@ -29,6 +22,7 @@ import { CoqFile } from "../models/coqFile";
 
 import { CoqCodeExecutor } from "./coqCommandExecutor";
 import { CoqCommandType } from "./coqCommandType";
+import { parseCoqFile } from "../../coqParser/parseCoqFile";
 
 @Injectable()
 export class CoqProjectObserverService {
@@ -89,7 +83,7 @@ export class CoqProjectObserverService {
         const fileUri = this.resolveFileUri(filePath, auxFileUri);
         console.log(`getTheoremNamesFromFile: Using URI ${fileUri.fsPath}`);
 
-        const document = await this.getDocument(filePath);
+        const document = await this.getDocument(fileUri);
 
         const theoremNames = document.map((t) => t.name);
         console.log(
@@ -105,30 +99,16 @@ export class CoqProjectObserverService {
         return Uri.fromPath(path.join(this.projectRoot, filePath));
     }
 
-    private async getDocument(filePath: string): Promise<Theorem[]> {
-        const cachedFile = readRequestedFilesCache(
-            [
-                `/Users/Nikita.Khramov/Desktop/work/coqpilot/dataset/imm/${filePath}`,
-            ],
-            "/Users/Nikita.Khramov/Desktop/work/coqpilot/dataset/imm/",
-            "/Users/Nikita.Khramov/Desktop/work/coqpilot/benchmarkLogs/.cache/imm/",
-            new BenchmarkingLoggerImpl(
-                SeverityLevel.DEBUG,
-                undefined,
-                "CoqProjectObserverService"
-            )
-        );
-        const cachedTheorems: CacheHolderData.CachedTheoremData[] =
-            cachedFile.getAllCachedTheorems(
-                `/Users/Nikita.Khramov/Desktop/work/coqpilot/dataset/imm/${filePath}`
+    private async getDocument(fileUri: Uri): Promise<Theorem[]> {
+        let document: Theorem[] = [];
+        await this.coqLspClient.withTextDocument({ uri: fileUri }, async () => {
+            document = await parseCoqFile(
+                fileUri,
+                this.coqLspClient,
+                new AbortController().signal
             );
-        console.log(`cachedTheorems: ${cachedTheorems.length}`);
-        const cachedTheoremsData: TheoremData[] = cachedTheorems.map(
-            (t) => t.theoremData
-        );
-        const document: Theorem[] = cachedTheoremsData.map(
-            (t) => t.sourceTheorem
-        );
+        });
+
 
         console.log(`document: ${document.length}`);
         return document;
@@ -143,9 +123,9 @@ export class CoqProjectObserverService {
             `retrieveTheoremWithProofFromFile: Getting theorem ${theoremName} from ${filePath}`
         );
 
-        // const fileUri = this.resolveFileUri(filePath, auxFileUri);
+        const fileUri = this.resolveFileUri(filePath, auxFileUri);
 
-        const document = await this.getDocument(filePath);
+        const document = await this.getDocument(fileUri);
 
         const theorem = document.find((t) => t.name === theoremName);
         if (!theorem) {
@@ -297,6 +277,12 @@ export class CoqProjectObserverService {
             );
 
             if (result.err) {
+                if (result.val.name === "stack_subgoals") {
+                    return Err({
+                        message: result.val.message,
+                        name: result.val.name,
+                    });
+                }
                 return Err({
                     message: result.val.message,
                     location: {
@@ -360,7 +346,9 @@ export class CoqProjectObserverService {
             `getPremisesFromFile: Getting premises for goal ${goal} in ${filePath}`
         );
 
-        const document: Theorem[] = await this.getDocument(filePath);
+        const fileUri = this.resolveFileUri(filePath)
+
+        const document: Theorem[] = await this.getDocument(fileUri);
 
         console.log(`document: ${document.length}`);
 

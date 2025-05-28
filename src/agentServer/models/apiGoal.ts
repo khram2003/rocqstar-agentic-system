@@ -6,6 +6,7 @@ export interface ProofError {
         start: { line: number; character: number };
         end: { line: number; character: number };
     } | null;
+    name?: string;
 }
 
 export interface ApiGoal {

@@ -52,18 +52,9 @@ export function readRequestedFilesCache(
                         datasetDir,
                         resolvedSourceFilePath
                     );
-                    console.log(
-                        `resolvedSourceFilePath: ${resolvedSourceFilePath}`
-                    );
-                    console.log(
-                        `filePathRelativeToDataset: ${filePathRelativeToDataset}`
-                    );
                     const resolvedCachedFilePath = joinPaths(
                         cacheDir,
                         joinJsonExtension(filePathRelativeToDataset)
-                    );
-                    console.log(
-                        `resolvedCachedFilePath: ${resolvedCachedFilePath}`
                     );
                     if (
                         !(

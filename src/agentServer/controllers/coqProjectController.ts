@@ -14,6 +14,8 @@ import {
 import { CoqProjectObserverService } from "../services/coqProjectObserverService";
 import { SessionManager } from "../services/sessionManager";
 import { prepareProofToCheck } from "../utils/proofPreparationUtil";
+import { ProofGoal } from "../../coqLsp/coqLspTypes";
+import { hypToString } from "../../core/exposedCompletionGeneratorUtils";
 
 interface ProofCheckResponse {
     success: boolean;
@@ -297,7 +299,8 @@ export class CoqProjectController {
                 (!result.err && result.val.length > 0) ||
                 (preparedProof.includes("admit.") &&
                     !result.err &&
-                    result.val.length === 0)
+                    result.val.length === 0) ||
+                (result.err && result.val.name === "stack_subgoals")
             ) {
                 const updatedProofVersion = currentSession.proofVersions.get(
                     updatedProofVersionHash
@@ -328,14 +331,44 @@ export class CoqProjectController {
                             .filter((step) => step.length > 0)
                             .map((step) => `${step}.`);
                 }
-                const currentGoals = result.val;
-                return {
-                    success: true,
-                    message: "Proof is incomplete but valid so far",
-                    hash: updatedProofVersionHash,
-                    proof: preparedProof,
-                    goals: currentGoals,
-                };
+                if (result.ok){
+                    const currentGoals = result.val;
+                    return {
+                        success: true,
+                        message: "Proof is incomplete but valid so far",
+                        hash: updatedProofVersionHash,
+                        proof: preparedProof,
+                        goals: currentGoals,
+                    };
+                }
+                if (result.err && result.val.name === "stack_subgoals") {
+                    let messageToSend = "Your proof is incomplete but valid so far. It has the following goal at the depth ";
+                    const message = JSON.parse(result.val.message);
+                    let apiGoals: ApiGoal[] = [];
+                    for (const kek of message) {
+                        const depth = kek[0];
+                        const goals = kek[1];
+                        if (goals.length > 0) {
+                            apiGoals = goals.map((goal: ProofGoal) => ({
+                                conclusion: goal.ty.toString(),
+                                hypothesis: goal.hyps.map((hyp) => hypToString(hyp)),
+                            }));
+                            messageToSend += `${depth}:`;
+                            break;
+                        }
+                    }
+
+
+
+
+                    return {
+                        success: true,
+                        message: messageToSend,
+                        hash: updatedProofVersionHash,
+                        proof: preparedProof,
+                        goals: apiGoals
+                    };
+                }
             }
 
             // Case 3: Proof has errors
@@ -424,7 +457,7 @@ export class CoqProjectController {
 
                 if (resultOfCheckingValidPrefix.err) {
                     throw new Error(
-                        `Failed to check valid proof portion: ${resultOfCheckingValidPrefix.val}`
+                        `Failed to check valid proof portion: ${resultOfCheckingValidPrefix.val.message}`
                     );
                 }
 

@@ -19,6 +19,7 @@ interface CoqCodeExecError {
         start: { line: number; character: number };
         end: { line: number; character: number };
     } | null;
+    name?: string;
 }
 
 export type CoqCodeExecGoalResult = Result<ProofGoal[], CoqCodeExecError>;
@@ -202,6 +203,10 @@ export class CoqCodeExecutor implements CoqCodeExecutorInterface {
             `CoqCodeExecutor.getGoalAfterCoqCodeUnsafe: Getting goals. Document version: ${documentVersion + 1}`
         );
 
+        console.log(
+            `Checking code at position L${positionToCheckAt.line}:C${positionToCheckAt.character}`
+        )
+
         const goal = await this.coqLspClient.getGoalsAtPoint(
             positionToCheckAt,
             fileUri,
@@ -225,9 +230,11 @@ export class CoqCodeExecutor implements CoqCodeExecutorInterface {
         );
 
         if (goal.ok) {
+            console.log(`Returning goals: ${goal.val}`)
             return Ok(goal.val);
         } else {
             return Err({
+                name: goal.val.name,
                 message: goal.val.message,
                 line: undefined,
             });

@@ -116,7 +116,7 @@ app.post("/mcp", async (req, res) => {
             )
             .update({
                 description:
-                    "Retrieves available theorem names from a file with a target theorem",
+                    "Retrieves available theorem names from a file, including the target theorem.",
                 paramsSchema: {
                     filePath: z.string().describe("Path to the Coq file"),
                     coqSessionId: z
@@ -147,7 +147,7 @@ app.post("/mcp", async (req, res) => {
             )
             .update({
                 description:
-                    "Retrieves available theorem names from a file without a target theorem",
+                    "Retrieves available theorem names from a file with target theorem excluded from the list.",
                 paramsSchema: {
                     filePath: z.string().describe("Path to the Coq file"),
                 },
@@ -175,7 +175,7 @@ app.post("/mcp", async (req, res) => {
                 }
             )
             .update({
-                description: "Retrieves current state of a target theorem",
+                description: "Returns the stage of the proof for the target theorem in the current session.",
                 paramsSchema: {
                     coqSessionId: z
                         .string()
@@ -222,7 +222,7 @@ app.post("/mcp", async (req, res) => {
                 }
             )
             .update({
-                description: "Retrieves a specific theorem with proof by name",
+                description: "Given the theorem's name, returns the theorem with its proof.",
                 paramsSchema: {
                     filePath: z.string().describe("Path to the Coq file"),
                     theoremName: z
@@ -268,7 +268,7 @@ app.post("/mcp", async (req, res) => {
             )
             .update({
                 description:
-                    "Validates a proof (or a part of a proof) in the context of a session and returns goals/errors",
+                    "Validates a proof (or a part of a proof) in the context of a session and returns either of the following: \n(i) That there are no more goals to prove\n(ii) Provided proof produces no errors, but the goal is not fully solved. Returns: updated goal state\n(iii) The current goal is solved, but there are more goals at other depth levels. Returns: first unsolved goal at the closest depth level\n(iv) Provided proof produces errors. Returns: error message",
                 paramsSchema: {
                     proof: z
                         .string()
@@ -364,7 +364,7 @@ app.post("/mcp", async (req, res) => {
             )
             .update({
                 description:
-                    "Retrieves all objects in a session. Uses Print All Coq Command.",
+                    "Returns output of Coq Print All command, issued in the context of the current session. This command prints all defined objects in the current file. In particular, that would mean printing all statements of theorems available above the one we are trying to prove at the moment of request.",
                 paramsSchema: {
                     coqSessionId: z
                         .string()
@@ -427,7 +427,7 @@ app.post("/mcp", async (req, res) => {
             )
             .update({
                 description:
-                    "Searches for a pattern in the current session's file. Uses Search Coq Command.",
+                    "Searches for a pattern in the current session's file. Uses Search Coq Command. An example of a valid command: Search (?a + ?b = ?b + ?a). It could be useful for finding lemmas that could be used in the proof.",
                 paramsSchema: {
                     pattern: z.string().describe("The pattern to search for"),
                     coqSessionId: z
@@ -491,7 +491,7 @@ app.post("/mcp", async (req, res) => {
             )
             .update({
                 description:
-                    "Checks a term in the current session's file. Uses Check Coq Command.",
+                    "Checks a term in the current session's file. Uses Check Coq Command. It outputs only the type of the term. In the case of a theorem, it outputs its statement.",
                 paramsSchema: {
                     term: z.string().describe("The term to check"),
                     coqSessionId: z

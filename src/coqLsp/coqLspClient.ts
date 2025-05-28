@@ -57,7 +57,7 @@ export interface CoqLspClient extends Disposable {
      * @param documentUri Uri of the document
      * @param version Version of the document
      * @param command Optional command to execute before fetching the goals
-     * @returns All goals present at the given position, not only the first one
+     * @returns All goals present at the given SUB BRANCH, not only the first one
      */
     getGoalsAtPoint(
         position: Position,
@@ -410,13 +410,39 @@ export class CoqLspClientImpl implements CoqLspClient {
                 goalReqType,
                 goalRequestParams
             );
+            if (goalAnswer === undefined) {
+                return Err(CoqLspError.unknownError());
+            }
+            if (goalAnswer.goals === undefined) {
+                return Err(CoqLspError.unknownError());
+            }
+
+            const substackGoals: [number, ProofGoal[]][] = [];
+
+            for (let i = 0; i < goalAnswer.goals.stack.length; i++) {
+                const goalsAtDepth = goalAnswer.goals.stack[i];
+                const remainingGoals = goalsAtDepth[1];
+                if (remainingGoals.length == 0) {
+                    continue;
+                }
+                substackGoals.push([i, remainingGoals]);
+                break;
+            }
+
             const goals = goalAnswer?.goals?.goals;
 
             if (!goals) {
                 return Err(CoqLspError.unknownError());
             }
 
-            return Ok(goals);
+            if (substackGoals.length === 0) {
+                return Ok(goals);
+            }
+
+            return Err({
+                name: "stack_subgoals",
+                message: JSON.stringify(substackGoals),
+            });
         } catch (e) {
             if (e instanceof Error) {
                 const errorMsg = this.cleanLspError(
